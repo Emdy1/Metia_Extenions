@@ -1,0 +1,11 @@
+{
+    "streamDataApi": "https://animepahe.netlify.app/api/streamData/",
+    "searchApi": "https://animepahe.netlify.app/api/search-anime/",
+    "episodeListApi": "https://animepahe.netlify.app/api/get-episode-list/",   
+    "title": "AnimePahe",
+    "iconUrl": "https://assets.apk.live/com.animepahe.show_animes--128-icon.png",
+    "dub": true,
+    "sub": true,
+    "language": "English",
+    "anilistPreferedTitle": "romaji"
+}

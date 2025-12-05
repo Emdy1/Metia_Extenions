@@ -1,7 +1,7 @@
 {
-    "streamDataApi": "https://animepahe1.netlify.app/api/streamData/",
-    "searchApi": "https://animepahe1.netlify.app/api/search-anime/",
-    "episodeListApi": "https://animepahe1.netlify.app/api/get-episode-list/",   
+    "streamDataApi": "https://animepahe1.netlify.app/.netlify/functions/streamdata/",
+    "searchApi": "https://animepahe1.netlify.app/.netlify/functions/search-anime/",
+    "episodeListApi": "https://animepahe1.netlify.app/.netlify/functions/get-episode-list/",   
     "title": "AnimePahe",
     "iconUrl": "https://assets.apk.live/com.animepahe.show_animes--128-icon.png",
     "dub": true,
@@ -9,3 +9,4 @@
     "language": "English",
     "anilistPreferedTitle": "romaji"
 }
+

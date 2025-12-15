@@ -1,0 +1,12 @@
+{
+    "name": "AnimePahe",
+    "iconUrl": "https://assets.apk.live/com.animepahe.show_animes--128-icon.png",
+    "isSub": true,
+    "isDub": true,
+    "language": "English",
+    "anilistPreferedTitle": "romaji",
+    "jsCodeUrl": "https",
+    "version": "1.0.0",
+    "author": "MoaadXD",
+    "description": "an extension made by MoaadXD to scrapp the anime data from the animepahe.ru website for the new metia_v2 version"
+}

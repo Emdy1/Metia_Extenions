@@ -5,7 +5,7 @@
     "isDub": true,
     "language": "English",
     "anilistPreferedTitle": "romaji",
-    "jsCodeUrl": "https",
+    "jsCodeUrl": "https://raw.githubusercontent.com/Emdy1/Metia_Extenions/refs/heads/main/scripts/animepahe_metia_v2_script.js",
     "version": "1.0.0",
     "author": "MoaadXD",
     "description": "an extension made by MoaadXD to scrapp the anime data from the animepahe.ru website for the new metia_v2 version"

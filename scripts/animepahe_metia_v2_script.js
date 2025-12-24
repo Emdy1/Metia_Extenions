@@ -91,69 +91,72 @@ async function getEpisodeStreamData(sessionId) {
 }
 
 
-async function fetchAllEpisodes(animeId, page = 1, headers = {}, accumulated = []) {
-  const url = `https://animepahe.si/api?m=release&id=${animeId}&sort=episode_asc&page=${page}`;
+async function fetchAllEpisodesParallel(animeId, headers = {}) {
+    const firstPageUrl = `https://animepahe.si/api?m=release&id=${animeId}&sort=episode_asc&page=1`;
 
-  try {
-    const res = await fetchViaNative(url, headers);
+    try {
+        const firstRes = await fetchViaNative(firstPageUrl, headers);
+        if (firstRes.status !== 200) throw new Error(`HTTP ${firstRes.status}`);
 
-    if (res.status !== 200) {
-      throw new Error(`HTTP ${res.status}`);
+        const firstData = JSON.parse(firstRes.body);
+        const totalPages = firstData.last_page || 1;
+        const accumulated = firstData.data || [];
+
+        if (totalPages <= 1) return accumulated;
+
+        const fetchPromises = [];
+        for (let page = 2; page <= totalPages; page++) {
+            const url = `https://animepahe.si/api?m=release&id=${animeId}&sort=episode_asc&page=${page}`;
+            fetchPromises.push(
+                fetchViaNative(url, headers)
+                    .then(res => {
+                        if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+                        return JSON.parse(res.body).data || [];
+                    })
+                    .catch(err => {
+                        console.error(`Failed to fetch page ${page}:`, err);
+                        return []; // continue even if one page fails
+                    })
+            );
+        }
+
+        const remainingEpisodes = await Promise.all(fetchPromises);
+        return accumulated.concat(...remainingEpisodes);
+    } catch (err) {
+        console.error('Error fetching episodes:', err);
+        throw err;
     }
-
-    const data = JSON.parse(res.body);
-    const episodes = data.data || [];
-    const allEpisodes = accumulated.concat(episodes);
-
-    if (data.next_page_url) {
-      // recursively fetch next page
-      return fetchAllEpisodes(animeId, page + 1, headers, allEpisodes);
-    } else {
-      // no more pages
-      return allEpisodes;
-    }
-  } catch (err) {
-    console.log(`Error fetching episodes: ${err}`);
-    throw err;
-  }
 }
 
-/*main anime episode fetching function*/
+/**
+ * Main wrapper to get anime episodes
+ */
 async function getAnimeEpisodeList(animeId) {
-  const headers = {
-    'Cookie': '__ddg2_=',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive'
-  };
-
-  try {
-    const allEpisodes = await fetchAllEpisodes(animeId, 1, headers);
-
-    const transformed = allEpisodes.map(ep => ({
-      cover: ep.snapshot || null,
-      name: `Episode ${ep.episode}`,
-      link: null,
-      id: animeId + 'dumb' + ep.session,
-      dub: ep.audio === 'eng',
-      sub: true
-    }));
-
-    return {
-      status: 'success',
-      animeId,
-      data: transformed
+    const headers = {
+        'Cookie': '__ddg2_=',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'application/json,text/html,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Connection': 'keep-alive'
     };
-  } catch (err) {
-    console.log('Episode list error:', err);
-    return {
-      status: 'error',
-      message: err.toString(),
-      animeId
-    };
-  }
+
+    try {
+        const allEpisodes = await fetchAllEpisodesParallel(animeId, headers);
+
+        const transformed = allEpisodes.map(ep => ({
+            cover: ep.snapshot || null,
+            name: `Episode ${ep.episode}`,
+            link: null,
+            id: `${animeId}dumb${ep.session}`,
+            dub: ep.audio === 'eng',
+            sub: true
+        }));
+
+        return { status: 'success', animeId, data: transformed };
+    } catch (err) {
+        console.error('Episode list error:', err);
+        return { status: 'error', message: err.toString(), animeId };
+    }
 }
 /*main Search function*/
 async function searchAnime(keyword) {
@@ -177,3 +180,4 @@ async function searchAnime(keyword) {
     data: JSON.parse(res.body).data
   };
 }
+

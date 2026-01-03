@@ -4,7 +4,7 @@ const BASE_URL = 'https://example-anime-site.com';
  *Main streaming data episode fucntion
  */
 async function getEpisodeStreamData(url) {
-  ...
+  //...
   const episode = {
     link: '',
     isSub: '',
@@ -19,7 +19,7 @@ async function getEpisodeStreamData(url) {
  * Main wrapper to get anime episodes
  */
 async function getAnimeEpisodeList(animeId) {
-  ...
+  //...
   const anime = {
     name: '',
     length: '',
@@ -32,7 +32,7 @@ async function getAnimeEpisodeList(animeId) {
  * Main Search function
  */
 async function searchAnime(keyword) {
-  ...
+  //...
   const episode = {
     poster: '',
     name: '',

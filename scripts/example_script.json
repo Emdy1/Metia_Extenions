@@ -1,0 +1,44 @@
+const BASE_URL = 'https://example-anime-site.com';
+
+/**
+ *Main streaming data episode fucntion
+ */
+async function getEpisodeStreamData(url) {
+  ...
+  const episode = {
+    link: '',
+    isSub: '',
+    isDub: '',
+    name: '',
+    m3u8Link: '',
+  }
+  return [episode * 99];
+}
+
+/**
+ * Main wrapper to get anime episodes
+ */
+async function getAnimeEpisodeList(animeId) {
+  ...
+  const anime = {
+    name: '',
+    length: '',
+    poster: '',
+    url: '',
+  }
+  return [anime * 99];
+}
+/**
+ * Main Search function
+ */
+async function searchAnime(keyword) {
+  ...
+  const episode = {
+    poster: '',
+    name: '',
+    url: '',
+    isDub: '',
+    isSub: '',
+  }
+  return [episode * 99];
+}

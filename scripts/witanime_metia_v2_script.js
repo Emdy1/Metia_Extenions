@@ -11,6 +11,26 @@ async function getEpisodeStreamData(episodeUrl) {
     }
     return null;
   }
+  function convertToWitanimeStyle(m3u8Url) {
+    const url = new URL(m3u8Url.replace("master.m3u8", "index-v1-a1.m3u8"));
+
+    // 1. extract srv param → firstData
+    const firstData = url.searchParams.get("srv");
+    if (!firstData) {
+      throw new Error("srv parameter missing");
+    }
+
+    // 2. extract path after /hls2/
+    const pathMatch = url.pathname.match(/\/hls2\/(.+)\/index-v1/);
+    if (!pathMatch) {
+      throw new Error("Invalid hls2 path format");
+    }
+
+    const secondData = pathMatch[1];
+
+    // 3. build final URL
+    return `https://drrh37sqosrl.harborlightartisanworks.cyou/${firstData}/hls3/${secondData}/master.txt`;
+  }
 
   async function streamwishExtractor(url) {
     let link = url;
@@ -36,7 +56,7 @@ async function getEpisodeStreamData(episodeUrl) {
     const unpacked = unpackJs(html);
     const m3u8Match = unpacked?.match(/(https:\/\/[^\s"']+\.m3u8(?:\?[^\s"']*)?)/);
     // return m3u8Match ? m3u8Match[1].replace("master.m3u8", "index-v1-a1.m3u8") : null;
-    return m3u8Match ? m3u8Match[1] : null;
+    return m3u8Match ? convertToWitanimeStyle(m3u8Match[1]) : null;
   }
 
   const extractors = {

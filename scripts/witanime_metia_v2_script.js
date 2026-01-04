@@ -36,7 +36,7 @@ async function getEpisodeStreamData(episodeUrl) {
     const unpacked = unpackJs(html);
     const m3u8Match = unpacked?.match(/(https:\/\/[^\s"']+\.m3u8(?:\?[^\s"']*)?)/);
     // return m3u8Match ? m3u8Match[1].replace("master.m3u8", "index-v1-a1.m3u8") : null;
-    return m3u8Match ? m3u8Match[1].replace("master.m3u8", "index-v1-a1.m3u8") : null;
+    return m3u8Match ? m3u8Match[1] : null;
   }
 
   const extractors = {

@@ -1,162 +1,188 @@
-/*main streaming data episode fucntion*/
+/* main streaming data episode function */
 async function getEpisodeStreamData(sessionId) {
   const url = `https://animepahe.si/play/${sessionId.replace('dumb', '/')}`;
   const headers = {
-    'Referer': 'https://animepahe.si/',
-    'Cookie': '__ddg2_=',
+    Referer: 'https://animepahe.si/',
+    Cookie: '__ddg2_=',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
   };
 
   try {
-    // Fetch the page HTML via native Dart fetch
     const res = await fetchViaNative(url, headers);
-
-    if (res.status !== 200) {
-      throw new Error(`HTTP ${res.status}`);
-    }
+    if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
 
     const html = res.body;
 
-    // Parse HTML using DOMParser
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
+    /* ----------------------------
+     * 1. Extract anime title
+     * <h1><a title="Anime Name">
+     * ---------------------------- */
+    let animeTitle = '';
+    const titleMatch = html.match(
+      /<h1[^>]*>\s*<a[^>]*title=["']([^"']+)["']/i
+    );
+    if (titleMatch) animeTitle = titleMatch[1];
 
-    // Extract anime title
-    const animeTitleEl = doc.querySelector('h1 a[title]');
-    const animeTitle = animeTitleEl ? animeTitleEl.getAttribute('title') : '';
+    /* ---------------------------------------
+     * 2. Extract resolution/source buttons
+     * <button data-src="..."
+     *         data-resolution="720"
+     *         data-audio="jpn"
+     *         data-fansub="HorribleSubs">
+     * --------------------------------------- */
+    const sources = [];
+    const buttonRegex =
+      /<button[^>]*data-src=["']([^"']+)["'][^>]*>/gi;
 
-    // Extract source buttons
-    const sourceButtons = Array.from(doc.querySelectorAll('#resolutionMenu button'));
-    const sources = sourceButtons.map(btn => ({
-      provider: `${btn.getAttribute('data-fansub') || ''} ${btn.getAttribute('data-resolution') || ''}p`,
-      link: btn.getAttribute('data-src'),
-      dub: btn.getAttribute('data-audio') === 'eng',
-      sub: btn.getAttribute('data-audio') === 'jpn',
-      m3u8: null,
-      title: animeTitle
-    }));
+    let btnMatch;
+    while ((btnMatch = buttonRegex.exec(html)) !== null) {
+      const buttonHtml = btnMatch[0];
 
-    // Fetch m3u8 links from each source
-    const m3u8Fetches = await Promise.all(
-      sources.map(async source => {
+      const getAttr = (name) => {
+        const m = buttonHtml.match(
+          new RegExp(`${name}=["']([^"']+)["']`, 'i')
+        );
+        return m ? m[1] : null;
+      };
+
+      const src = getAttr('data-src');
+      const reso = getAttr('data-resolution');
+      const audio = getAttr('data-audio');
+      const fansub = getAttr('data-fansub');
+
+      sources.push({
+        name: `${fansub || ''} ${reso || ''}p`.trim(),
+        link: src,
+        isDub: audio === 'eng',
+        isSub: audio === 'jpn',
+        m3u8Link: null,
+        animeTitle
+      });
+    }
+
+    /* ---------------------------------------
+     * 3. Fetch each source & extract m3u8
+     * --------------------------------------- */
+    const results = await Promise.all(
+      sources.map(async (source) => {
         try {
-          if (!source.link) return { ...source, m3u8: null };
+          if (!source.link) return source;
 
           const res2 = await fetchViaNative(source.link, {
-            'Referer': 'https://animepahe.si/',
+            Referer: 'https://animepahe.si/',
             'User-Agent': 'Mozilla/5.0'
           });
 
-          if (res2.status !== 200) return { ...source, m3u8: null };
+          if (res2.status !== 200) return source;
 
           const pageHtml = res2.body;
 
-          // Extract m3u8 via regex
-          const match = pageHtml.match(/;eval(.*?)<\/script>/s);
-          if (!match) return { ...source, m3u8: null };
+          // Extract eval-packed script
+          const evalMatch = pageHtml.match(/;eval\((.*?)\)\s*<\/script>/s);
+          if (!evalMatch) return source;
 
           try {
-            const wrapped = `var data = ${match[1]}; data;`;
-            const result = eval(wrapped);
+            const unpacked = eval(`(${evalMatch[1]})`);
+            const m3u8Match = unpacked.match(/https?:\/\/[^'"]+\.m3u8/);
 
-            const m3u8Match = result.match(/['"]([^'"]+\.m3u8)['"]/);
-            return { ...source, m3u8: m3u8Match ? m3u8Match[1] : null };
-          } catch (err) {
-            console.log(err);
-            return { ...source, m3u8: null };
+            return {
+              ...source,
+              m3u8Link: m3u8Match ? m3u8Match[0] : null
+            };
+          } catch (e) {
+            console.log('Eval failed:', e);
+            return source;
           }
 
-        } catch (err) {
-          console.log(`Failed to fetch m3u8 for ${source.provider}: ${err}`);
-          return { ...source, m3u8: null };
+        } catch (e) {
+          console.log('Source fetch failed:', e);
+          return source;
         }
       })
     );
 
-    // Sort: dub first, sub next, highest resolution first
-    m3u8Fetches.sort((a, b) => {
-      if (a.dub !== b.dub) return a.dub ? -1 : 1;
-      if (a.sub !== b.sub) return a.sub ? -1 : 1;
-      const resA = parseInt((a.provider.match(/(\d+)p/) || [0,0])[1], 10);
-      const resB = parseInt((b.provider.match(/(\d+)p/) || [0,0])[1], 10);
-      return resB - resA;
+    /* ---------------------------------------
+     * 4. Sort: dub > sub > resolution
+     * --------------------------------------- */
+    results.sort((a, b) => {
+      if (a.isDub !== b.isDub) return a.isDub ? -1 : 1;
+      if (a.isSub !== b.isSub) return a.isSub ? -1 : 1;
+
+      const ra = parseInt(a.name.match(/(\d+)p/)?.[1] || 0, 10);
+      const rb = parseInt(b.name.match(/(\d+)p/)?.[1] || 0, 10);
+      return rb - ra;
     });
 
-    return { status: 'success', data: m3u8Fetches };
+    return { status: 'success', data: results };
 
   } catch (err) {
     console.log('Episode stream fetch error:', err);
-    return { status: 'error', message: err.toString() };
+    return { status: 'error', message: String(err) };
   }
 }
-
-
-async function fetchAllEpisodesParallel(animeId, headers = {}) {
+/* Main wrapper to get anime episodes*/
+async function getAnimeEpisodeList(animeId) {
+  async function fetchAllEpisodesParallel(animeId, headers = {}) {
     const firstPageUrl = `https://animepahe.si/api?m=release&id=${animeId}&sort=episode_asc&page=1`;
 
     try {
-        const firstRes = await fetchViaNative(firstPageUrl, headers);
-        if (firstRes.status !== 200) throw new Error(`HTTP ${firstRes.status}`);
+      const firstRes = await fetchViaNative(firstPageUrl, headers);
+      if (firstRes.status !== 200) throw new Error(`HTTP ${firstRes.status}`);
 
-        const firstData = JSON.parse(firstRes.body);
-        const totalPages = firstData.last_page || 1;
-        const accumulated = firstData.data || [];
+      const firstData = JSON.parse(firstRes.body);
+      const totalPages = firstData.last_page || 1;
+      const accumulated = firstData.data || [];
 
-        if (totalPages <= 1) return accumulated;
+      if (totalPages <= 1) return accumulated;
 
-        const fetchPromises = [];
-        for (let page = 2; page <= totalPages; page++) {
-            const url = `https://animepahe.si/api?m=release&id=${animeId}&sort=episode_asc&page=${page}`;
-            fetchPromises.push(
-                fetchViaNative(url, headers)
-                    .then(res => {
-                        if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
-                        return JSON.parse(res.body).data || [];
-                    })
-                    .catch(err => {
-                        console.error(`Failed to fetch page ${page}:`, err);
-                        return []; // continue even if one page fails
-                    })
-            );
-        }
+      const fetchPromises = [];
+      for (let page = 2; page <= totalPages; page++) {
+        const url = `https://animepahe.si/api?m=release&id=${animeId}&sort=episode_asc&page=${page}`;
+        fetchPromises.push(
+          fetchViaNative(url, headers)
+            .then(res => {
+              if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+              return JSON.parse(res.body).data || [];
+            })
+            .catch(err => {
+              console.error(`Failed to fetch page ${page}:`, err);
+              return []; // continue even if one page fails
+            })
+        );
+      }
 
-        const remainingEpisodes = await Promise.all(fetchPromises);
-        return accumulated.concat(...remainingEpisodes);
+      const remainingEpisodes = await Promise.all(fetchPromises);
+      return accumulated.concat(...remainingEpisodes);
     } catch (err) {
-        console.error('Error fetching episodes:', err);
-        throw err;
+      console.error('Error fetching episodes:', err);
+      throw err;
     }
-}
+  }
+  const headers = {
+    'Cookie': '__ddg2_=',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Accept': 'application/json,text/html,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Connection': 'keep-alive'
+  };
 
-/**
- * Main wrapper to get anime episodes
- */
-async function getAnimeEpisodeList(animeId) {
-    const headers = {
-        'Cookie': '__ddg2_=',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'application/json,text/html,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Connection': 'keep-alive'
-    };
+  try {
+    const allEpisodes = await fetchAllEpisodesParallel(animeId, headers);
 
-    try {
-        const allEpisodes = await fetchAllEpisodesParallel(animeId, headers);
+    const transformed = allEpisodes.map(ep => ({
+      poster: ep.snapshot || null,
+      name: `Episode ${ep.episode}`,
+      url: `${animeId}dumb${ep.session}`,
+      // id: `${animeId}dumb${ep.session}`,
+      isDub: ep.audio === 'eng',
+      isSub: true
+    }));
 
-        const transformed = allEpisodes.map(ep => ({
-            cover: ep.snapshot || null,
-            name: `Episode ${ep.episode}`,
-            link: null,
-            id: `${animeId}dumb${ep.session}`,
-            dub: ep.audio === 'eng',
-            sub: true
-        }));
-
-        return { status: 'success', animeId, data: transformed };
-    } catch (err) {
-        console.error('Episode list error:', err);
-        return { status: 'error', message: err.toString(), animeId };
-    }
+    return { status: 'success', animeId, data: transformed };
+  } catch (err) {
+    console.error('Episode list error:', err);
+    return { status: 'error', message: err.toString(), animeId };
+  }
 }
 /*main Search function*/
 async function searchAnime(keyword) {
@@ -174,10 +200,20 @@ async function searchAnime(keyword) {
     throw new Error("HTTP " + res.status);
   }
 
+
+  results2 = [];
+  JSON.parse(res.body).data.map(item => {
+    results2.push({
+      name: item.title,
+      length: item.episodes,
+      poster: item.poster,
+      url: item.session,
+    });
+  });
+
   return {
     status: 'success',
     keyword,
-    data: JSON.parse(res.body).data
+    data: results2
   };
 }
-

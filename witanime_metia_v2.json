@@ -1,0 +1,12 @@
+{
+    "name": "WitAanime",
+    "iconUrl": "https://apkrabi.com/uploads/2022/6/witanime-thumbnail.jpg",
+    "isSub": true,
+    "isDub": false,
+    "language": "Arabic",
+    "anilistPreferedTitle": "romaji",
+    "jsCodeUrl": "https://raw.githubusercontent.com/Emdy1/Metia_Extenions/refs/heads/main/scripts/witanime_metia_v2_script.js",
+    "version": "1.0.0",
+    "author": "MoaadXD",
+    "description": "an extension made by MoaadXD to scrapp the anime data from the witanime.cyou website for the new metia_v2 version"
+}

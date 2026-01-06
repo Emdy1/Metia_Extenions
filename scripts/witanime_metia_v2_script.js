@@ -4,6 +4,7 @@ const BASE_URL = 'https://witanime.art/';
 /**
  *Main streaming data episode function
  */
+
 async function getEpisodeStreamData(episodeUrl) {
   function detectExtractor(url) {
     for (const key of Object.keys(extractors)) {
@@ -11,28 +12,28 @@ async function getEpisodeStreamData(episodeUrl) {
     }
     return null;
   }
-  function convertToWitanimeStyle(m3u8Url) {
-    const url = new URL(m3u8Url.replace("master.m3u8", "index-v1-a1.m3u8"));
-
-    // 1. extract srv param → firstData
-    const firstData = url.searchParams.get("srv");
-    if (!firstData) {
-      throw new Error("srv parameter missing");
-    }
-
-    // 2. extract path after /hls2/
-    const pathMatch = url.pathname.match(/\/hls2\/(.+)\/index-v1/);
-    if (!pathMatch) {
-      throw new Error("Invalid hls2 path format");
-    }
-
-    const secondData = pathMatch[1];
-
-    // 3. build final URL
-    return `https://drrh37sqosrl.harborlightartisanworks.cyou/${firstData}/hls3/${secondData}/master.txt`;
-  }
 
   async function streamwishExtractor(url) {
+    function convertToWitanimeStyle(m3u8Url) {
+      const url = new URL(m3u8Url.replace("master.m3u8", "index-v1-a1.m3u8"));
+
+      // 1. extract srv param → firstData
+      const firstData = url.searchParams.get("srv");
+      if (!firstData) {
+        throw new Error("srv parameter missing");
+      }
+
+      // 2. extract path after /hls2/
+      const pathMatch = url.pathname.match(/\/hls2\/(.+)\/index-v1/);
+      if (!pathMatch) {
+        throw new Error("Invalid hls2 path format");
+      }
+
+      const secondData = pathMatch[1];
+
+      // 3. build final URL
+      return `https://drrh37sqosrl.harborlightartisanworks.cyou/${firstData}/hls3/${secondData}/master.txt`;
+    }
     let link = url;
     if (url.includes("gradehgplus.com")) {
       link = url.replace("gradehgplus.com", "cavanhabg.com");
@@ -59,19 +60,123 @@ async function getEpisodeStreamData(episodeUrl) {
     return m3u8Match ? convertToWitanimeStyle(m3u8Match[1]) : null;
   }
 
+  async function videaExtractor(url) {
+    const STATIC_SECRET = 'xHb0ZvME5q8CBcoQi6AngerDu3FGO9fkUlwPmLVY_RTzj2hJIS4NasXWKy1td7p';
+
+    function rc4(cipherText, key) {
+      let res = '';
+      const keyLen = key.length;
+      let S = Array.from({ length: 256 }, (_, i) => i);
+
+      let j = 0;
+      for (let i = 0; i < 256; i++) {
+        j = (j + S[i] + key.charCodeAt(i % keyLen)) % 256;
+        [S[i], S[j]] = [S[j], S[i]];
+      }
+
+      let i = 0;
+      j = 0;
+      for (let m = 0; m < cipherText.length; m++) {
+        i = (i + 1) % 256;
+        j = (j + S[i]) % 256;
+        [S[i], S[j]] = [S[j], S[i]];
+        const k = S[(S[i] + S[j]) % 256];
+        res += String.fromCharCode(k ^ cipherText.charCodeAt(m));
+      }
+      return res;
+    }
+
+    function searchRegex(pattern, string, name) {
+      const match = string.match(pattern);
+      if (!match) throw new Error(`Could not find ${name}`);
+      return match[1];
+    }
+
+    function randomString(len) {
+      return Array.from({ length: len }, () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 52)]).join('');
+    }
+
+    async function downloadPage(url, query) {
+      let fullUrl = url;
+      if (query) fullUrl = `${url}?${new URLSearchParams(query).toString()}`;
+      const res = await fetchViaNative(fullUrl);
+      //const res = res1.body;
+      if (!res) throw new Error('Network response was not ok');
+      return [await res.body, null, res.headers];
+    }
+
+    function parseVideoSources(xml) {
+      const formats = [];
+      const videoSourceRegex = /<video_source\b[^>]*name="([^"]+)"[^>]*height="([^"]+)"[^>]*exp="([^"]+)"?>([^<]+)<\/video_source>/g;
+      const hashRegex = /<hash_value_([^>]+)>([^<]+)<\/hash_value_[^>]+>/g;
+
+      // collect all hash values
+      const hashValues = {};
+      let hashMatch;
+      while ((hashMatch = hashRegex.exec(xml)) !== null) {
+        hashValues[hashMatch[1]] = hashMatch[2];
+      }
+
+      let match;
+      while ((match = videoSourceRegex.exec(xml)) !== null) {
+        const [_, name, height, exp, srcUrl] = match;
+        let finalUrl = srcUrl;
+        const hashValue = hashValues[name];
+        if (hashValue && exp) finalUrl = `${srcUrl}?md5=${hashValue}&expires=${exp}`;
+        formats.push({ url: finalUrl, quality: parseInt(height, 10) });
+      }
+      return formats.sort((a, b) => b.quality - a.quality);
+    }
+
+    try {
+      // Main video page
+      // const videoPage = await fetch(link).then(r => r.text());
+      // let playerUrl = url.includes('videa.hu/player') ? url :
+      //   new URL(searchRegex(/<iframe.*?src="(\/player\?[^"]+)"/, videoPage, 'player url'), url).href;
+
+      // Player page
+      const playerPage = await fetchViaNative(url).then(r => r.body);
+      const nonce = searchRegex(/_xt\s*=\s*"([^"]+)"/, playerPage, 'nonce');
+      const l = nonce.slice(0, 32);
+      const s = nonce.slice(32);
+      let result = '';
+      for (let i = 0; i < 32; i++) {
+        result += s[i - (STATIC_SECRET.indexOf(l[i]) - 31)];
+      }
+
+      const query = Object.fromEntries(new URLSearchParams(url.split('?')[1]));
+      const random_seed = randomString(8);
+      query['_s'] = random_seed;
+      query['_t'] = result.slice(0, 16);
+
+      // Fetch XML info
+      const [b64_info, status, headers] = await downloadPage('https://videa.hu/player/xml', query);
+      let xml;
+      if (b64_info.startsWith('<?xml')) {
+        xml = b64_info;
+      } else {
+        const xVideaXs = headers.get('x-videa-xs') ?? '';
+        const key = result.slice(16) + random_seed + xVideaXs;
+        xml = rc4(atob(b64_info), key);
+      }
+      const results = parseVideoSources(xml);
+      return "http:" + results[0].url; //TODO: in the future make this so the other resoulutions are also available not just the 720p
+    } catch (e) {
+      console.error('Videa extraction error:', e.message);
+      // throw e;
+      return "";
+    }
+  }
+
+
+
   const extractors = {
-    "yonaplay": async (url) => {
-      const html = (await fetchViaNative(url)).body; // ✅ use .body
-      const m = html.match(/source\s*:\s*["']([^"']+\.m3u8)["']/);
-      return m ? m[1] : null;
-    },
-    "videa": async (url) => null,
-    "dailymotion": async (url) => {
-      const idMatch = url.match(/video\/([^_]+)/);
-      if (!idMatch) return null;
-      const id = idMatch[1];
-      const json = (await fetchViaNative(`https://www.dailymotion.com/player/metadata/video/${id}`)).body;
-      return json?.qualities?.auto?.[0]?.url || null;
+    "yonaplay": async (url) => null,
+    "dailymotion": async (url) => null,
+    "ok.ru": async (url) => null,
+    "mp4upload.com": async (url) => null,
+    "videa": async (url) => {
+      return videaExtractor(url);
     },
     "hglink.to": async (url) => {
       return streamwishExtractor(url);
@@ -82,7 +187,9 @@ async function getEpisodeStreamData(episodeUrl) {
     "gradehgplus.com": async (url) => {
       return streamwishExtractor(url);
     },
-    "ok.ru": async (url) => null
+    "playerwish.com": async (url) => {
+      return streamwishExtractor(url);
+    },
   };
 
   // === STEP 1: Get resourceRegistry/configRegistry/server names ===
@@ -127,7 +234,7 @@ async function getEpisodeStreamData(episodeUrl) {
     return {
       id: idx,
       name: serverNames[idx] || `server-${idx}`,
-      url,
+      url: url.startsWith("//") ? "https:" + url : url,
     };
   });
 
@@ -164,6 +271,7 @@ async function getEpisodeStreamData(episodeUrl) {
     data: streamingDataList
   };
 }
+
 
 
 /**

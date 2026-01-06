@@ -1,6 +1,3 @@
-const BASE_URL = 'https://witanime.art/';
-
-
 /**
  *Main streaming data episode function
  */
@@ -326,7 +323,7 @@ async function getAnimeEpisodeList(url) {
  * Main Search function
  */
 async function searchAnime(keyword) {
-  const res = await fetchViaNative(`${BASE_URL}?search_param=animes&s=${encodeURIComponent(keyword)}`);
+  const res = await fetchViaNative(`https://witanime.art/?search_param=animes&s=${encodeURIComponent(keyword)}`);
   const data = res.body; // ✅ use .body
   const results = [];
 

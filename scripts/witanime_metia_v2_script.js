@@ -200,7 +200,7 @@ async function getEpisodeStreamData(episodeUrl) {
     async function googleDriveExtractor(url) {
       try {
         link = "https://drive.google.com/get_video_info?docid=" + url.split("/")[5];
-        res = await fetchViaNative(link, { Referer: url, Origin: url, Accept: "*/*" });
+        res = await fetchViaNative(link, { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36" });
         if (!res) throw new Error(`Failed to fetch ${link}: ${res.status}`);
         html = res.body;
         return parseGdocs(html);

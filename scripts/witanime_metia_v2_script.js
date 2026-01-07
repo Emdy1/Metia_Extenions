@@ -5,12 +5,12 @@ async function getEpisodeStreamData(episodeUrl) {
   // Helper function to normalize quality to LQ/SD/HD/FHD format
   function normalizeQuality(quality) {
     if (!quality || quality === "default") return "HD";
-    
+
     // If already in LQ/SD/HD/FHD format, return as-is
     if (['LQ', 'SD', 'HD', 'FHD'].includes(quality.toUpperCase())) {
       return quality.toUpperCase();
     }
-    
+
     // Convert pixel-based quality to LQ/SD/HD/FHD
     const qualityMap = {
       '144p': 'LQ',
@@ -22,7 +22,7 @@ async function getEpisodeStreamData(episodeUrl) {
       '1440p': 'FHD',
       '2160p': 'FHD'
     };
-    
+
     return qualityMap[quality] || 'HD';
   }
 
@@ -67,7 +67,7 @@ async function getEpisodeStreamData(episodeUrl) {
     // Return with HD as default quality
     return m3u8Match ? [{ m3u8: convertToWitanimeStyle(m3u8Match[1]), quality: "HD" }] : [];
   }
-  
+
   async function videaExtractor(url) {
     STATIC_SECRET = 'xHb0ZvME5q8CBcoQi6AngerDu3FGO9fkUlwPmLVY_RTzj2hJIS4NasXWKy1td7p';
     function rc4(cipherText, key) {
@@ -155,7 +155,7 @@ async function getEpisodeStreamData(episodeUrl) {
       return [];
     }
   }
-  
+
   async function yonaplayExtractor(url) {
     res = await fetchViaNative(url, { Referer: "https://witanime.you", Origin: url, Accept: "*/*" });
     if (!res) throw new Error(`Failed to fetch ${url}: ${res.status}`);
@@ -180,11 +180,11 @@ async function getEpisodeStreamData(episodeUrl) {
         url: decodedUrl
       });
     }
-    
+
     async function megaExtractor(url) {
       return [];
     }
-    
+
     async function fourSharedExtractor(url) {
       try {
         regex = /https:(.*?)preview.mp4/;
@@ -196,7 +196,7 @@ async function getEpisodeStreamData(episodeUrl) {
         return [];
       }
     }
-    
+
     async function googleDriveExtractor(url) {
       try {
         link = "https://drive.google.com/get_video_info?docid=" + url.split("/")[5];
@@ -204,7 +204,7 @@ async function getEpisodeStreamData(episodeUrl) {
         if (!res) throw new Error(`Failed to fetch ${link}: ${res.status}`);
         html = res.body;
         return parseGdocs(html);
-        
+
         function parseGdocs(html, itagMap = {}) {
           function getVideoResolution(itag) {
             const videoCode = {
@@ -252,12 +252,12 @@ async function getEpisodeStreamData(episodeUrl) {
         return [];
       }
     }
-    
+
     // Process all results and extract URLs in parallel
     const extractionPromises = results.map(async (result) => {
       let extractedSources = [];
       let serverName = result.server;
-      
+
       switch (result.server.toLowerCase()) {
         case 'mega.nz':
           extractedSources = await megaExtractor(result.url);
@@ -273,7 +273,8 @@ async function getEpisodeStreamData(episodeUrl) {
           break;
         case 'drive.google.com':
           {
-            const sources = await googleDriveExtractor(result.url);
+            // const sources = await googleDriveExtractor(result.url);
+            const sources = [];
             // Google Drive returns {url, quality} objects already
             extractedSources = sources;
             serverName = 'Google Drive';
@@ -282,7 +283,7 @@ async function getEpisodeStreamData(episodeUrl) {
         default:
           return [];
       }
-      
+
       // Return array of results with quality info
       if (Array.isArray(extractedSources) && extractedSources.length > 0) {
         return extractedSources.map(source => ({
@@ -293,24 +294,24 @@ async function getEpisodeStreamData(episodeUrl) {
       }
       return [];
     });
-    
+
     const allResults = await Promise.all(extractionPromises);
     return allResults.flat();
   }
-  
+
   async function dailymotionExtractor(url) {
     try {
       res = await fetchViaNative("https://www.dailymotion.com/player/metadata/video/" + url.split("video/")[1], { "User-Agent": "Mozilla/5.0" });
       if (!res) throw new Error(`Failed to fetch ${url}: ${res.status}`);
       json = JSON.parse(res.body);
       m3u8Link = json.qualities?.auto?.[0]?.url || null;
-      
+
       if (!m3u8Link) return [];
-      
+
       sources = [];
       hlsStream = await fetchViaNative(m3u8Link);
       hls = hlsStream.body;
-      
+
       if (hls) {
         hlsLines = hls.split("\n");
         for (let i = 0; i < hlsLines.length; i++) {
@@ -322,7 +323,7 @@ async function getEpisodeStreamData(episodeUrl) {
               if (height >= 360) quality = "SD";
               if (height >= 720) quality = "HD";
               if (height >= 1080) quality = "FHD";
-              
+
               // Get the actual m3u8 URL from the next line
               let streamUrl = hlsLines[i + 1];
               if (streamUrl && !streamUrl.startsWith("#")) {
@@ -343,14 +344,14 @@ async function getEpisodeStreamData(episodeUrl) {
       return [];
     }
   }
-  
+
   function detectExtractor(url) {
     for (key of Object.keys(extractors)) {
       if (url.includes(key)) return key;
     }
     return null;
   }
-  
+
   extractors = {
     "ok.ru": async (url) => [],
     "mp4upload.com": async (url) => [],
@@ -376,7 +377,7 @@ async function getEpisodeStreamData(episodeUrl) {
       return streamwishExtractor(url);
     },
   };
-  
+
   async function getServers(url) {
     res = await fetchViaNative(url, { "User-Agent": "Mozilla/5.0" });
     html = res.body;
@@ -414,7 +415,7 @@ async function getEpisodeStreamData(episodeUrl) {
       };
     });
   }
-  
+
   async function extractM3U8(servers) {
     // Run all extractors in parallel
     const extractionPromises = servers.map(async (server) => {
@@ -450,19 +451,19 @@ async function getEpisodeStreamData(episodeUrl) {
     // Flatten the array of arrays into a single array
     return results.flat();
   }
-  
+
   servers = await getServers(episodeUrl);
   validServers = await extractM3U8(servers);
   streamingDataList = validServers.map(server => {
     // Normalize quality to LQ/SD/HD/FHD format
     const normalizedQuality = normalizeQuality(server.quality);
-    
+
     // Build name with universal format: supplier - source (quality)
     let displayName;
-    
+
     // Always remove any existing quality suffix from the server name first
     let cleanName = server.name.replace(/\s*-\s*(LQ|SD|HD|FHD|144p|240p|360p|480p|720p|1080p)$/i, '').trim();
-    
+
     if (server.sourceServer) {
       // Has a source server (e.g., yonaplay with 4shared/Google Drive)
       displayName = `${cleanName} - ${server.sourceServer} (${normalizedQuality})`;
@@ -470,7 +471,7 @@ async function getEpisodeStreamData(episodeUrl) {
       // Direct server without sub-source
       displayName = `${cleanName} (${normalizedQuality})`;
     }
-    
+
     return {
       isDub: false,
       isSub: true,
@@ -480,7 +481,7 @@ async function getEpisodeStreamData(episodeUrl) {
       quality: normalizedQuality
     };
   });
-  
+
   // Sort by quality: FHD > HD > SD > LQ
   const qualityOrder = { 'FHD': 0, 'HD': 1, 'SD': 2, 'LQ': 3 };
   streamingDataList.sort((a, b) => {
@@ -488,7 +489,7 @@ async function getEpisodeStreamData(episodeUrl) {
     const orderB = qualityOrder[b.quality] ?? 999;
     return orderA - orderB;
   });
-  
+
   return {
     status: 'success',
     data: streamingDataList

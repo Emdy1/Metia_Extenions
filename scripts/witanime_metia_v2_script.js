@@ -280,7 +280,7 @@ async function getEpisodeStreamData(episodeUrl) {
           }
           break;
         default:
-          extractedSources = result.url ? [{ url: result.url, quality: result.quality }] : [];
+          return [];
       }
       
       // Return array of results with quality info

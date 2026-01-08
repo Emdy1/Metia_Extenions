@@ -52,7 +52,10 @@ async function getEpisodeStreamData(episodeUrl) {
       link = url.replace("cavanhabg.com", "cavanhabg.com");
     } else if (url.includes("hglink.to")) {
       link = url.replace("hglink.to", "cavanhabg.com");
+    } else if (url.includes("hlswish.com")) {
+      link = url.replace("hlswish.com", "cavanhabg.com");
     }
+    
     res = await fetchViaNative(link, { Referer: link, Origin: link, Accept: "*/*" });
     if (!res) throw new Error(`Failed to fetch ${link}: ${res.status}`);
     html = res.body;
@@ -376,6 +379,10 @@ async function getEpisodeStreamData(episodeUrl) {
     "playerwish.com": async (url) => {
       return streamwishExtractor(url);
     },
+    "hlswish.com": async (url) => {
+      return streamwishExtractor(url);
+    },
+    
   };
 
   async function getServers(url) {

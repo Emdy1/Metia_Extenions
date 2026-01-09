@@ -2,86 +2,92 @@
  *Main streaming data episode function
  */
 async function getEpisodeStreamData(episodeUrl) {
-  // Helper function to normalize quality to LQ/SD/HD/FHD format
+
+  // ============================================================================
+  // UTILITY FUNCTIONS
+  // ============================================================================
+
   function normalizeQuality(quality) {
-    if (!quality || quality === "default") return "HD";
+    if (!quality || quality === "default") return "720p";
+    if (quality.match(/^\d+p$/)) return quality;
 
-    // If already in LQ/SD/HD/FHD format, return as-is
-    if (['LQ', 'SD', 'HD', 'FHD'].includes(quality.toUpperCase())) {
-      return quality.toUpperCase();
-    }
-
-    // Convert pixel-based quality to LQ/SD/HD/FHD
     const qualityMap = {
-      '144p': 'LQ',
-      '240p': 'LQ',
-      '360p': 'SD',
-      '480p': 'SD',
-      '720p': 'HD',
-      '1080p': 'FHD',
-      '1440p': 'FHD',
-      '2160p': 'FHD'
+      'LQ': '240p',
+      'SD': '480p',
+      'HD': '720p',
+      'FHD': '1080p'
     };
 
-    return qualityMap[quality] || 'HD';
+    return qualityMap[quality.toUpperCase()] || quality;
   }
+
+  function cleanServerName(name) {
+    // Remove quality suffixes
+    name = name.replace(/\s*-\s*(LQ|SD|HD|FHD|\d+p)$/i, '').trim();
+
+    // Remove yonaplay prefix and variations
+    if (name.toLowerCase().match(/yona(play)?/)) {
+      name = name.replace(/^yona(play)?\s*-?\s*(multi\s*-?\s*)?/i, '').trim();
+    }
+
+    return name || "unknown";
+  }
+
+  // ============================================================================
+  // EXTRACTOR FUNCTIONS
+  // ============================================================================
 
   async function streamwishExtractor(url) {
     function convertToWitanimeStyle(m3u8Url) {
       url = new URL(m3u8Url.replace("master.m3u8", "index-v1-a1.m3u8"));
-      // 1. extract srv param → firstData
       firstData = url.searchParams.get("srv");
-      if (!firstData) {
-        throw new Error("srv parameter missing");
-      }
-      // 2. extract path after /hls2/
+      if (!firstData) throw new Error("srv parameter missing");
+
       pathMatch = url.pathname.match(/\/hls2\/(.+)\/index-v1/);
-      if (!pathMatch) {
-        throw new Error("Invalid hls2 path format");
-      }
+      if (!pathMatch) throw new Error("Invalid hls2 path format");
+
       secondData = pathMatch[1];
-      // 3. build final URL
       return `https://drrh37sqosrl.harborlightartisanworks.cyou/${firstData}/hls3/${secondData}/master.txt`;
     }
-    let link = url;
-    if (url.includes("gradehgplus.com")) {
-      link = url.replace("gradehgplus.com", "cavanhabg.com");
-    } else if (url.includes("hgplus.in")) {
-      link = url.replace("hgplus.in", "cavanhabg.com")
-    } else if (url.includes("cavanhabg.com")) {
-      link = url.replace("cavanhabg.com", "cavanhabg.com");
-    } else if (url.includes("hglink.to")) {
-      link = url.replace("hglink.to", "cavanhabg.com");
-    } else if (url.includes("hlswish.com")) {
-      link = url.replace("hlswish.com", "cavanhabg.com");
-    }
-    
+
+    let link = url
+      .replace("gradehgplus.com", "cavanhabg.com")
+      .replace("hgplus.in", "cavanhabg.com")
+      .replace("hglink.to", "cavanhabg.com")
+      .replace("hlswish.com", "cavanhabg.com");
+
     res = await fetchViaNative(link, { Referer: link, Origin: link, Accept: "*/*" });
     if (!res) throw new Error(`Failed to fetch ${link}: ${res.status}`);
+
     html = res.body;
+
     function unpackJs(packed) {
       match = packed.match(/eval(.*?)\n<\/script>/s);
       if (!match) return null;
       wrapped = `var data = ${match[1]}; data;`;
       return eval(wrapped);
     }
+
     unpacked = unpackJs(html);
     m3u8Match = unpacked?.match(/(https:\/\/[^\s"']+\.m3u8(?:\?[^\s"']*)?)/);
-    // Return with HD as default quality
-    return m3u8Match ? [{ m3u8: convertToWitanimeStyle(m3u8Match[1]), quality: "HD" }] : [];
+
+    return m3u8Match ? [{ url: convertToWitanimeStyle(m3u8Match[1]), quality: "720p" }] : [];
   }
 
   async function videaExtractor(url) {
     STATIC_SECRET = 'xHb0ZvME5q8CBcoQi6AngerDu3FGO9fkUlwPmLVY_RTzj2hJIS4NasXWKy1td7p';
+
     function rc4(cipherText, key) {
       let res = '';
       keyLen = key.length;
       let S = Array.from({ length: 256 }, (_, i) => i);
       let j = 0;
+
       for (let i = 0; i < 256; i++) {
         j = (j + S[i] + key.charCodeAt(i % keyLen)) % 256;
         [S[i], S[j]] = [S[j], S[i]];
       }
+
       let i = 0;
       j = 0;
       for (let m = 0; m < cipherText.length; m++) {
@@ -93,14 +99,19 @@ async function getEpisodeStreamData(episodeUrl) {
       }
       return res;
     }
+
     function searchRegex(pattern, string, name) {
       match = string.match(pattern);
       if (!match) throw new Error(`Could not find ${name}`);
       return match[1];
     }
+
     function randomString(len) {
-      return Array.from({ length: len }, () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 52)]).join('');
+      return Array.from({ length: len }, () =>
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 52)]
+      ).join('');
     }
+
     async function downloadPage(url, query) {
       let fullUrl = url;
       if (query) fullUrl = `${url}?${new URLSearchParams(query).toString()}`;
@@ -108,16 +119,18 @@ async function getEpisodeStreamData(episodeUrl) {
       if (!res) throw new Error('Network response was not ok');
       return [await res.body, null, res.headers];
     }
+
     function parseVideoSources(xml) {
       formats = [];
       videoSourceRegex = /<video_source\b[^>]*name="([^"]+)"[^>]*height="([^"]+)"[^>]*exp="([^"]+)"?>([^<]+)<\/video_source>/g;
       hashRegex = /<hash_value_([^>]+)>([^<]+)<\/hash_value_[^>]+>/g;
-      // collect all hash values
+
       hashValues = {};
       let hashMatch;
       while ((hashMatch = hashRegex.exec(xml)) !== null) {
         hashValues[hashMatch[1]] = hashMatch[2];
       }
+
       let match;
       while ((match = videoSourceRegex.exec(xml)) !== null) {
         [_, name, height, exp, srcUrl] = match;
@@ -128,6 +141,7 @@ async function getEpisodeStreamData(episodeUrl) {
       }
       return formats.sort((a, b) => b.quality - a.quality);
     }
+
     try {
       const playerPage = await fetchViaNative(url).then(r => r.body);
       const nonce = searchRegex(/_xt\s*=\s*"([^"]+)"/, playerPage, 'nonce');
@@ -137,10 +151,12 @@ async function getEpisodeStreamData(episodeUrl) {
       for (let i = 0; i < 32; i++) {
         result += s[i - (STATIC_SECRET.indexOf(l[i]) - 31)];
       }
+
       const query = Object.fromEntries(new URLSearchParams(url.split('?')[1]));
       const random_seed = randomString(8);
       query['_s'] = random_seed;
       query['_t'] = result.slice(0, 16);
+
       const [b64_info, status, headers] = await downloadPage('https://videa.hu/player/xml', query);
       let xml;
       if (b64_info.startsWith('<?xml')) {
@@ -150,165 +166,23 @@ async function getEpisodeStreamData(episodeUrl) {
         const key = result.slice(16) + random_seed + xVideaXs;
         xml = rc4(atob(b64_info), key);
       }
+
       const results = parseVideoSources(xml);
-      // Return all available qualities with pixel format
-      return results.map(r => ({ m3u8: "http:" + r.url, quality: `${r.quality}p` }));
+      return results.map(r => ({ url: "http:" + r.url, quality: `${r.quality}p` }));
     } catch (e) {
       console.error('Videa extraction error:', e.message);
       return [];
     }
   }
 
-  async function yonaplayExtractor(url) {
-    res = await fetchViaNative(url, { Referer: "https://witanime.you", Origin: url, Accept: "*/*" });
-    if (!res) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-    html = res.body;
-    regex = /go_to_player\('([^']+)'\)[\s\S]*?<span>([^<]+)<\/span>[\s\S]*?<p>\s*([A-Z]+)/g;
-    results = [];
-    let match;
-    while ((match = regex.exec(html)) !== null) {
-      base64Url = match[1];
-      server = match[2].trim();
-      quality = match[3].trim();
-      let decodedUrl;
-      try {
-        decodedUrl = atob(base64Url);
-      } catch {
-        decodedUrl = null;
-      }
-      results.push({
-        server,
-        quality,
-        encoded: base64Url,
-        url: decodedUrl
-      });
-    }
-
-    async function megaExtractor(url) {
-      return [];
-    }
-
-    async function fourSharedExtractor(url) {
-      try {
-        regex = /https:(.*?)preview.mp4/;
-        body = (await fetchViaNative(url)).body;
-        m3u8Match = body.match(regex);
-        return m3u8Match ? [`https:${m3u8Match[1]}preview.mp4`] : [];
-      } catch (e) {
-        console.error('4shared extraction error:', e);
-        return [];
-      }
-    }
-
-    async function googleDriveExtractor(url) {
-      try {
-        link = "https://drive.google.com/get_video_info?docid=" + url.split("/")[5];
-        res = await fetchViaNative(link, { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36" });
-        if (!res) throw new Error(`Failed to fetch ${link}: ${res.status}`);
-        html = res.body;
-        return parseGdocs(html);
-
-        function parseGdocs(html, itagMap = {}) {
-          function getVideoResolution(itag) {
-            const videoCode = {
-              '18': 'SD',
-              '59': 'SD',
-              '22': 'HD',
-              '37': 'FHD'
-            };
-            return videoCode[itag] || 'SD';
-          }
-          const sources = [];
-          // error handling
-          if (html.includes('error')) {
-            const reasonMatch = html.match(/reason=([^&]+)/);
-            if (reasonMatch) {
-              const reason = decodeURIComponent(reasonMatch[1].replace(/\+/g, ' '));
-              throw new Error(reason);
-            }
-            throw new Error('Unknown Google Docs error');
-          }
-          // extract fmt_stream_map
-          const fmtMatch = html.match(/fmt_stream_map=([^&]+)/);
-          if (!fmtMatch) {
-            throw new Error('fmt_stream_map not found');
-          }
-          // decode the whole stream map
-          const value = decodeURIComponent(fmtMatch[1]);
-          const items = value.split(',');
-          for (const item of items) {
-            const parts = item.split('|');
-            if (parts.length !== 2) continue;
-            const itag = parts[0];
-            let sourceUrl = parts[1];
-            // decode escaped sequences + URL encoding
-            try {
-              sourceUrl = decodeURIComponent(sourceUrl);
-            } catch (_) { }
-            const quality = itagMap[itag] || getVideoResolution(itag);
-            sources.push({ url: sourceUrl, quality: quality });
-          }
-          return sources;
-        }
-      } catch (e) {
-        console.error('Google Drive extraction error:', e);
-        return [];
-      }
-    }
-
-    // Process all results and extract URLs in parallel
-    const extractionPromises = results.map(async (result) => {
-      let extractedSources = [];
-      let serverName = result.server;
-
-      switch (result.server.toLowerCase()) {
-        case 'mega.nz':
-          extractedSources = await megaExtractor(result.url);
-          serverName = 'Mega';
-          break;
-        case 'www.4shared.com':
-          {
-            const urls = await fourSharedExtractor(result.url);
-            // 4shared returns just URLs, so wrap them with quality from yonaplay
-            extractedSources = urls.map(url => ({ url, quality: result.quality }));
-            serverName = '4shared';
-          }
-          break;
-        case 'drive.google.com':
-          {
-            // const sources = await googleDriveExtractor(result.url);
-            const sources = [];
-            // Google Drive returns {url, quality} objects already
-            extractedSources = sources;
-            serverName = 'Google Drive';
-          }
-          break;
-        default:
-          return [];
-      }
-
-      // Return array of results with quality info
-      if (Array.isArray(extractedSources) && extractedSources.length > 0) {
-        return extractedSources.map(source => ({
-          m3u8: source.url || source,
-          quality: source.quality || result.quality,
-          serverName: serverName
-        }));
-      }
-      return [];
-    });
-
-    const allResults = await Promise.all(extractionPromises);
-    return allResults.flat();
-  }
-
   async function dailymotionExtractor(url) {
     try {
-      res = await fetchViaNative("https://www.dailymotion.com/player/metadata/video/" + url.split("video/")[1], { "User-Agent": "Mozilla/5.0" });
+      res = await fetchViaNative("https://www.dailymotion.com/player/metadata/video/" + url.split("video/")[1],
+        { "User-Agent": "Mozilla/5.0" });
       if (!res) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+
       json = JSON.parse(res.body);
       m3u8Link = json.qualities?.auto?.[0]?.url || null;
-
       if (!m3u8Link) return [];
 
       sources = [];
@@ -322,20 +196,15 @@ async function getEpisodeStreamData(episodeUrl) {
             resMatch = hlsLines[i].match(/RESOLUTION=(\d+)x(\d+)/);
             if (resMatch) {
               height = parseInt(resMatch[2], 10);
-              let quality = "LQ";
-              if (height >= 360) quality = "SD";
-              if (height >= 720) quality = "HD";
-              if (height >= 1080) quality = "FHD";
-
-              // Get the actual m3u8 URL from the next line
+              let quality = `${height}p`;
               let streamUrl = hlsLines[i + 1];
+
               if (streamUrl && !streamUrl.startsWith("#")) {
-                // Make relative URLs absolute
                 if (!streamUrl.startsWith("http")) {
                   const baseUrl = m3u8Link.substring(0, m3u8Link.lastIndexOf("/") + 1);
                   streamUrl = baseUrl + streamUrl;
                 }
-                sources.push({ m3u8: streamUrl, quality: quality });
+                sources.push({ url: streamUrl, quality: quality });
               }
             }
           }
@@ -348,90 +217,212 @@ async function getEpisodeStreamData(episodeUrl) {
     }
   }
 
+  async function yonaplayExtractor(url) {
+    res = await fetchViaNative(url, { Referer: "https://witanime.you", Origin: url, Accept: "*/*" });
+    if (!res) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+
+    html = res.body;
+    regex = /go_to_player\('([^']+)'\)[\s\S]*?<span>([^<]+)<\/span>[\s\S]*?<p>\s*([A-Z]+)/g;
+    sourcesList = [];
+
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      base64Url = match[1];
+      server = match[2].trim();
+      quality = match[3].trim();
+
+      let decodedUrl;
+      try {
+        decodedUrl = atob(base64Url);
+      } catch {
+        decodedUrl = null;
+      }
+
+      if (decodedUrl) {
+        sourcesList.push({ server, quality, url: decodedUrl });
+      }
+    }
+
+    // Sub-extractors for different hosts
+    async function extract4shared(url, quality) {
+      try {
+        regex = /https:(.*?)preview.mp4/;
+        body = (await fetchViaNative(url)).body;
+        m3u8Match = body.match(regex);
+        return m3u8Match ? [{ url: `https:${m3u8Match[1]}preview.mp4`, quality: /*normalizeQuality(quality)*/ '480p', source: '4shared' }] : [];
+      } catch (e) {
+        console.error('4shared extraction error:', e);
+        return [];
+      }
+    }
+
+    async function extractGoogleDrive(url, quality) {
+      try {
+        link = "https://drive.google.com/get_video_info?docid=" + url.split("/")[5];
+        res = await fetchViaNative(link, {
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        });
+        if (!res) throw new Error(`Failed to fetch ${link}`);
+
+        html = res.body;
+
+        function parseGdocs(html) {
+          const itagMap = {
+            '18': '360p',
+            '59': '480p',
+            '22': '720p',
+            '37': '1080p'
+          };
+
+          const sources = [];
+
+          if (html.includes('error')) {
+            const reasonMatch = html.match(/reason=([^&]+)/);
+            if (reasonMatch) {
+              const reason = decodeURIComponent(reasonMatch[1].replace(/\+/g, ' '));
+              throw new Error(reason);
+            }
+            throw new Error('Unknown Google Docs error');
+          }
+
+          const fmtMatch = html.match(/fmt_stream_map=([^&]+)/);
+          if (!fmtMatch) throw new Error('fmt_stream_map not found');
+
+          const value = decodeURIComponent(fmtMatch[1]);
+          const items = value.split(',');
+
+          for (const item of items) {
+            const parts = item.split('|');
+            if (parts.length !== 2) continue;
+
+            const itag = parts[0];
+            let sourceUrl = parts[1];
+
+            try {
+              sourceUrl = decodeURIComponent(sourceUrl);
+            } catch (_) { }
+
+            const qualityResolution = itagMap[itag] || '480p';
+            sources.push({ url: sourceUrl, quality: qualityResolution, source: 'Google Drive' });
+          }
+          return sources;
+        }
+
+        return parseGdocs(html);
+      } catch (e) {
+        console.error('Google Drive extraction error:', e);
+        return [];
+      }
+    }
+
+    // Process all sources in parallel
+    const extractionPromises = sourcesList.map(async (item) => {
+      const serverLower = item.server.toLowerCase();
+
+      if (serverLower === 'www.4shared.com') {
+        return await extract4shared(item.url, item.quality);
+      } else if (serverLower === 'drive.google.com') {
+        return await extractGoogleDrive(item.url, item.quality);
+      } else if (serverLower === 'mega.nz') {
+        // Not implemented yet
+        return [];
+      }
+      return [];
+    });
+
+    const allResults = await Promise.all(extractionPromises);
+    return allResults.flat();
+  }
+
+  // ============================================================================
+  // EXTRACTOR REGISTRY
+  // ============================================================================
+
+  const extractors = {
+    "ok.ru": async (url) => [],
+    "mp4upload.com": async (url) => [],
+    "dailymotion": dailymotionExtractor,
+    "yonaplay": yonaplayExtractor,
+    "videa": videaExtractor,
+    "hglink.to": streamwishExtractor,
+    "cavanhabg.com": streamwishExtractor,
+    "gradehgplus.com": streamwishExtractor,
+    "playerwish.com": streamwishExtractor,
+    "hlswish.com": streamwishExtractor,
+  };
+
   function detectExtractor(url) {
-    for (key of Object.keys(extractors)) {
+    for (const key of Object.keys(extractors)) {
       if (url.includes(key)) return key;
     }
     return null;
   }
 
-  extractors = {
-    "ok.ru": async (url) => [],
-    "mp4upload.com": async (url) => [],
-    "dailymotion": async (url) => {
-      return dailymotionExtractor(url);
-    },
-    "yonaplay": async (url) => {
-      return yonaplayExtractor(url);
-    },
-    "videa": async (url) => {
-      return videaExtractor(url);
-    },
-    "hglink.to": async (url) => {
-      return streamwishExtractor(url);
-    },
-    "cavanhabg.com": async (url) => {
-      return streamwishExtractor(url);
-    },
-    "gradehgplus.com": async (url) => {
-      return streamwishExtractor(url);
-    },
-    "playerwish.com": async (url) => {
-      return streamwishExtractor(url);
-    },
-    "hlswish.com": async (url) => {
-      return streamwishExtractor(url);
-    },
-    
-  };
+  // ============================================================================
+  // SERVER PARSING
+  // ============================================================================
 
   async function getServers(url) {
     res = await fetchViaNative(url, { "User-Agent": "Mozilla/5.0" });
     html = res.body;
+
     zGMatch = html.match(/var\s+_zG\s*=\s*"([^"]+)"/);
     zHMatch = html.match(/var\s+_zH\s*=\s*"([^"]+)"/);
     if (!zGMatch || !zHMatch) throw new Error("No _zG/_zH found");
+
     resourceRegistry = JSON.parse(atob(zGMatch[1]));
     configRegistry = JSON.parse(atob(zHMatch[1]));
+
     serverNameRegex = /<span class="ser">([^<]+)<\/span>/g;
     serverNames = [];
     let match;
-    while (match = serverNameRegex.exec(html)) serverNames.push(match[1].trim());
+    while (match = serverNameRegex.exec(html)) {
+      serverNames.push(match[1].trim());
+    }
+
     FRAMEWORK_HASH = "1c0f3441-e3c2-4023-9e8b-bee77ff59adf";
+
     function getParamOffset(config) {
       index = parseInt(atob(config.k), 10);
       return config.d[index];
     }
+
     return resourceRegistry.map((resData, idx) => {
       let url = resData;
       if (typeof url === "string") {
         url = url.split("").reverse().join("").replace(/[^A-Za-z0-9+/=]/g, '');
         url = atob(url);
+
         if (configRegistry[idx]) {
           offset = getParamOffset(configRegistry[idx]);
           url = url.slice(0, -offset);
         }
+
         if (/^https:\/\/yonaplay\.net\/embed\.php\?id=\d+$/.test(url)) {
           url += "&apiKey=" + FRAMEWORK_HASH;
         }
       }
+
       return {
         id: idx,
-        name: serverNames[idx] || `server-${idx}`,
+        name: cleanServerName(serverNames[idx] || `server-${idx}`),
         url: url.startsWith("//") ? "https:" + url : url,
       };
     });
   }
 
-  async function extractM3U8(servers) {
-    // Run all extractors in parallel
+  // ============================================================================
+  // STREAM EXTRACTION & PROCESSING
+  // ============================================================================
+
+  async function extractStreams(servers) {
     const extractionPromises = servers.map(async (server) => {
       const extractorKey = detectExtractor(server.url);
       let extractedSources = [];
+
       if (extractorKey) {
         try {
           extractedSources = await extractors[extractorKey](server.url);
-          // Ensure result is always an array
           if (!Array.isArray(extractedSources)) {
             extractedSources = extractedSources ? [extractedSources] : [];
           }
@@ -440,62 +431,94 @@ async function getEpisodeStreamData(episodeUrl) {
           extractedSources = [];
         }
       } else {
-        // If no extractor, treat the URL as direct link
-        extractedSources = [{ m3u8: server.url, quality: "HD" }];
+        extractedSources = [{ url: server.url, quality: "720p" }];
       }
-      // Map extracted sources to server objects
-      return extractedSources
-        .filter(source => source.m3u8)
-        .map(source => ({
-          ...server,
-          m3u8: source.m3u8,
-          quality: source.quality || "HD",
-          sourceServer: source.serverName || null
-        }));
+
+      return extractedSources.map(source => ({
+        serverName: server.name,
+        sourceName: source.source || null,
+        url: server.url,
+        m3u8: source.url,
+        quality: source.quality || "720p"
+      }));
     });
-    // Wait for all extractions to complete
+
     const results = await Promise.all(extractionPromises);
-    // Flatten the array of arrays into a single array
-    return results.flat();
+    return results.flat().filter(s => s.m3u8);
   }
 
-  servers = await getServers(episodeUrl);
-  validServers = await extractM3U8(servers);
-  streamingDataList = validServers.map(server => {
-    // Normalize quality to LQ/SD/HD/FHD format
-    const normalizedQuality = normalizeQuality(server.quality);
+  function buildStreamList(streams) {
+    return streams.map(stream => {
+      const quality = normalizeQuality(stream.quality);
+      let displayName;
 
-    // Build name with universal format: supplier - source (quality)
-    let displayName;
+      // If source name exists (from multi-source extractors like yonaplay), use it
+      // Otherwise use server name
+      if (stream.sourceName) {
+        displayName = `${stream.sourceName} (${quality})`;
+      } else {
+        displayName = `${stream.serverName} (${quality})`;
+      }
 
-    // Always remove any existing quality suffix from the server name first
-    let cleanName = server.name.replace(/\s*-\s*(LQ|SD|HD|FHD|144p|240p|360p|480p|720p|1080p)$/i, '').trim();
+      return {
+        isDub: false,
+        isSub: true,
+        link: stream.url,
+        m3u8Link: stream.m3u8,
+        name: displayName,
+        quality: quality
+      };
+    });
+  }
 
-    if (server.sourceServer) {
-      // Has a source server (e.g., yonaplay with 4shared/Google Drive)
-      displayName = `${cleanName} - ${server.sourceServer} (${normalizedQuality})`;
-    } else {
-      // Direct server without sub-source
-      displayName = `${cleanName} (${normalizedQuality})`;
-    }
+  function addBackupLabels(streamList) {
+    const seenNames = new Map();
+    const primaryStreams = [];
+    const backupStreams = [];
 
-    return {
-      isDub: false,
-      isSub: true,
-      link: server.url || "",
-      m3u8Link: server.m3u8 || "",
-      name: displayName,
-      quality: normalizedQuality
-    };
-  });
+    streamList.forEach(item => {
+      const baseName = item.name;
 
-  // Sort by quality: FHD > HD > SD > LQ
-  const qualityOrder = { 'FHD': 0, 'HD': 1, 'SD': 2, 'LQ': 3 };
-  streamingDataList.sort((a, b) => {
-    const orderA = qualityOrder[a.quality] ?? 999;
-    const orderB = qualityOrder[b.quality] ?? 999;
-    return orderA - orderB;
-  });
+      if (!seenNames.has(baseName)) {
+        seenNames.set(baseName, 1);
+        primaryStreams.push(item);
+      } else {
+        const count = seenNames.get(baseName);
+        seenNames.set(baseName, count + 1);
+        const backupItem = { ...item };
+        backupItem.name = backupItem.name.replace(/\((\d+p)\)$/, `($1) - Backup ${count}`);
+        backupStreams.push(backupItem);
+      }
+    });
+
+    // Sort backups by quality as well
+    backupStreams.sort((a, b) => {
+      const getResolution = (q) => parseInt(q.replace('p', '')) || 0;
+      return getResolution(b.quality) - getResolution(a.quality);
+    });
+
+    // Return primaries first, then all backups
+    return [...primaryStreams, ...backupStreams];
+  }
+
+  function sortByQuality(streamList) {
+    return streamList.sort((a, b) => {
+      const getResolution = (q) => parseInt(q.replace('p', '')) || 0;
+      const resA = getResolution(a.quality);
+      const resB = getResolution(b.quality);
+      return resB - resA; // Higher resolution first
+    });
+  }
+
+  // ============================================================================
+  // MAIN EXECUTION
+  // ============================================================================
+
+  const servers = await getServers(episodeUrl);
+  const streams = await extractStreams(servers);
+  let streamingDataList = buildStreamList(streams);
+  streamingDataList = sortByQuality(streamingDataList);
+  streamingDataList = addBackupLabels(streamingDataList);
 
   return {
     status: 'success',

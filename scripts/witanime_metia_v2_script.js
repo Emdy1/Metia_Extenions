@@ -37,7 +37,9 @@ async function getEpisodeStreamData(episodeUrl) {
   // EXTRACTOR FUNCTIONS
   // ============================================================================
 
-  async function streamwishExtractor(url) {
+  async function streamwishExtractor(data) {
+    const qualityInput = data.split("////")[1];
+    url = data.split("////")[0];
     function convertToWitanimeStyle(m3u8Url) {
       url = new URL(m3u8Url.replace("master.m3u8", "index-v1-a1.m3u8"));
       firstData = url.searchParams.get("srv");
@@ -70,8 +72,9 @@ async function getEpisodeStreamData(episodeUrl) {
 
     unpacked = unpackJs(html);
     m3u8Match = unpacked?.match(/(https:\/\/[^\s"']+\.m3u8(?:\?[^\s"']*)?)/);
+    final = m3u8Match ? [{ url: convertToWitanimeStyle(m3u8Match[1]), quality: normalizeQuality(qualityInput) }] : [];
 
-    return m3u8Match ? [{ url: convertToWitanimeStyle(m3u8Match[1]), quality: "720p" }] : [];
+    return final;
   }
 
   async function videaExtractor(url) {
@@ -402,11 +405,19 @@ async function getEpisodeStreamData(episodeUrl) {
           url += "&apiKey=" + FRAMEWORK_HASH;
         }
       }
+      namee = "";
+      if (serverNames[idx] && serverNames[idx].toLowerCase().includes("streamwish")) {
+        namee = serverNames[idx];
+      } else {
+        namee = cleanServerName(serverNames[idx] || `server-${idx}`);
+      }
+
+
 
       return {
         id: idx,
-        name: cleanServerName(serverNames[idx] || `server-${idx}`),
-        url: url.startsWith("//") ? "https:" + url : url,
+        name: namee,
+        url: (url.startsWith("//") ? "https:" + url : url).trim(),
       };
     });
   }
@@ -422,7 +433,16 @@ async function getEpisodeStreamData(episodeUrl) {
 
       if (extractorKey) {
         try {
-          extractedSources = await extractors[extractorKey](server.url);
+          if (server.name.toLowerCase().includes("streamwish")) {
+            qualityPart = server.name.split(" - ")[1] ?? "HD";
+            if (!qualityPart) {
+              qualityPart = "HD";
+            }
+            extractedSources = await extractors[extractorKey](server.url + "////" + qualityPart);
+          } else {
+            extractedSources = await extractors[extractorKey](server.url);
+          }
+
           if (!Array.isArray(extractedSources)) {
             extractedSources = extractedSources ? [extractedSources] : [];
           }
@@ -516,7 +536,11 @@ async function getEpisodeStreamData(episodeUrl) {
 
   const servers = await getServers(episodeUrl);
   const streams = await extractStreams(servers);
-  let streamingDataList = buildStreamList(streams);
+  streamsCleaned = streams.map(s => ({
+    ...s,
+    serverName: s.serverName.replace(/\s*-\s*(LQ|SD|HD|FHD|\d+p)$/i, '').trim()
+  }));
+  let streamingDataList = buildStreamList(streamsCleaned);
   streamingDataList = sortByQuality(streamingDataList);
   streamingDataList = addBackupLabels(streamingDataList);
 

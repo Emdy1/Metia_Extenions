@@ -56,7 +56,8 @@ async function getEpisodeStreamData(episodeUrl) {
       .replace("gradehgplus.com", "cavanhabg.com")
       .replace("hgplus.in", "cavanhabg.com")
       .replace("hglink.to", "cavanhabg.com")
-      .replace("hlswish.com", "cavanhabg.com");
+      .replace("hlswish.com", "cavanhabg.com")
+      .replace("wishonly.site", "cavanhabg.com");
 
     res = await fetchViaNative(link, { Referer: link, Origin: link, Accept: "*/*" });
     if (!res) throw new Error(`Failed to fetch ${link}: ${res.status}`);
@@ -261,57 +262,9 @@ async function getEpisodeStreamData(episodeUrl) {
 
     async function extractGoogleDrive(url, quality) {
       try {
-        link = "https://drive.google.com/get_video_info?docid=" + url.split("/")[5];
-        res = await fetchViaNative(link, {
-          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        });
-        if (!res) throw new Error(`Failed to fetch ${link}`);
-
-        html = res.body;
-
-        function parseGdocs(html) {
-          const itagMap = {
-            '18': '360p',
-            '59': '480p',
-            '22': '720p',
-            '37': '1080p'
-          };
-
-          const sources = [];
-
-          if (html.includes('error')) {
-            const reasonMatch = html.match(/reason=([^&]+)/);
-            if (reasonMatch) {
-              const reason = decodeURIComponent(reasonMatch[1].replace(/\+/g, ' '));
-              throw new Error(reason);
-            }
-            throw new Error('Unknown Google Docs error');
-          }
-
-          const fmtMatch = html.match(/fmt_stream_map=([^&]+)/);
-          if (!fmtMatch) throw new Error('fmt_stream_map not found');
-
-          const value = decodeURIComponent(fmtMatch[1]);
-          const items = value.split(',');
-
-          for (const item of items) {
-            const parts = item.split('|');
-            if (parts.length !== 2) continue;
-
-            const itag = parts[0];
-            let sourceUrl = parts[1];
-
-            try {
-              sourceUrl = decodeURIComponent(sourceUrl);
-            } catch (_) { }
-
-            const qualityResolution = itagMap[itag] || '480p';
-            sources.push({ url: sourceUrl, quality: qualityResolution, source: 'Google Drive' });
-          }
-          return sources;
-        }
-
-        return parseGdocs(html);
+        id = url.split("/")[5];
+        m3u8Link = "https://drive.usercontent.google.com/download?id=" + id + "&export=download&confirm=t";
+        return m3u8Link ? { url: m3u8Link, quality: normalizeQuality(quality), source: 'Google Drive' } : [];
       } catch (e) {
         console.error('Google Drive extraction error:', e);
         return [];
@@ -352,6 +305,7 @@ async function getEpisodeStreamData(episodeUrl) {
     "gradehgplus.com": streamwishExtractor,
     "playerwish.com": streamwishExtractor,
     "hlswish.com": streamwishExtractor,
+    "wishonly.site": streamwishExtractor,
   };
 
   function detectExtractor(url) {

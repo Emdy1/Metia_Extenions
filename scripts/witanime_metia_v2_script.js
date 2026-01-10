@@ -40,6 +40,7 @@ async function getEpisodeStreamData(episodeUrl) {
   async function streamwishExtractor(data) {
     const qualityInput = data.split("////")[1];
     url = data.split("////")[0];
+    
     function convertToWitanimeStyle(m3u8Url) {
       url = new URL(m3u8Url.replace("master.m3u8", "index-v1-a1.m3u8"));
       firstData = url.searchParams.get("srv");
@@ -73,7 +74,7 @@ async function getEpisodeStreamData(episodeUrl) {
 
     unpacked = unpackJs(html);
     m3u8Match = unpacked?.match(/(https:\/\/[^\s"']+\.m3u8(?:\?[^\s"']*)?)/);
-    final = m3u8Match ? [{ url: convertToWitanimeStyle(m3u8Match[1]), quality: normalizeQuality(qualityInput) }] : [];
+    final = m3u8Match ? [{ url: convertToWitanimeStyle(m3u8Match[1]), quality: normalizeQuality(qualityInput), referer: link }] : [];
 
     return final;
   }
@@ -172,7 +173,7 @@ async function getEpisodeStreamData(episodeUrl) {
       }
 
       const results = parseVideoSources(xml);
-      return results.map(r => ({ url: "http:" + r.url, quality: `${r.quality}p` }));
+      return results.map(r => ({ url: "http:" + r.url, quality: `${r.quality}p`, referer: url }));
     } catch (e) {
       console.error('Videa extraction error:', e.message);
       return [];
@@ -208,7 +209,7 @@ async function getEpisodeStreamData(episodeUrl) {
                   const baseUrl = m3u8Link.substring(0, m3u8Link.lastIndexOf("/") + 1);
                   streamUrl = baseUrl + streamUrl;
                 }
-                sources.push({ url: streamUrl, quality: quality });
+                sources.push({ url: streamUrl, quality: quality, referer: url });
               }
             }
           }
@@ -253,7 +254,7 @@ async function getEpisodeStreamData(episodeUrl) {
         regex = /https:(.*?)preview.mp4/;
         body = (await fetchViaNative(url)).body;
         m3u8Match = body.match(regex);
-        return m3u8Match ? [{ url: `https:${m3u8Match[1]}preview.mp4`, quality: /*normalizeQuality(quality)*/ '480p', source: '4shared' }] : [];
+        return m3u8Match ? [{ url: `https:${m3u8Match[1]}preview.mp4`, quality: '480p', source: '4shared', referer: url }] : [];
       } catch (e) {
         console.error('4shared extraction error:', e);
         return [];
@@ -264,7 +265,7 @@ async function getEpisodeStreamData(episodeUrl) {
       try {
         id = url.split("/")[5];
         m3u8Link = "https://drive.usercontent.google.com/download?id=" + id + "&export=download&confirm=t";
-        return m3u8Link ? { url: m3u8Link, quality: normalizeQuality(quality), source: 'Google Drive' } : [];
+        return m3u8Link ? { url: m3u8Link, quality: normalizeQuality(quality), source: 'Google Drive', referer: url } : [];
       } catch (e) {
         console.error('Google Drive extraction error:', e);
         return [];
@@ -366,8 +367,6 @@ async function getEpisodeStreamData(episodeUrl) {
         namee = cleanServerName(serverNames[idx] || `server-${idx}`);
       }
 
-
-
       return {
         id: idx,
         name: namee,
@@ -405,13 +404,14 @@ async function getEpisodeStreamData(episodeUrl) {
           extractedSources = [];
         }
       } else {
-        extractedSources = [{ url: server.url, quality: "720p" }];
+        // No extractor found - skip this source
+        return [];
       }
 
       return extractedSources.map(source => ({
         serverName: server.name,
         sourceName: source.source || null,
-        url: server.url,
+        link: source.referer || server.url,
         m3u8: source.url,
         quality: source.quality || "720p"
       }));
@@ -437,7 +437,7 @@ async function getEpisodeStreamData(episodeUrl) {
       return {
         isDub: false,
         isSub: true,
-        link: stream.url,
+        link: stream.link,
         m3u8Link: stream.m3u8,
         name: displayName,
         quality: quality
